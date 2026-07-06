@@ -1,1 +1,34 @@
-/target
+# Rust builds
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# Cache et fichiers temporaires
+**/target/
+*.orig
+*.rej
+
+# Binaires compiles
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+
+# Configs locales
+env.json
