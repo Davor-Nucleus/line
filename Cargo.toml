@@ -2,6 +2,7 @@
 name = "line"
 version = "0.1.0"
 edition = "2024"
+authors = ["Rutra <contact@davor-nuclueus.fr>"]
 
 [dependencies]
 wasapi = "0.22"
