@@ -1,0 +1,11 @@
+[package]
+name = "line"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wasapi = "0.22"
+anyhow = "1"
+eframe = "0.33.3"
+env_logger = "0.11"
+log = "0.4"
