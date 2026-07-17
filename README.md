@@ -1,7 +1,7 @@
 <div align="center">
   <!-- <img src="public/logo.png" alt="Line Logo" width="200"/> -->
 
-  # 🎛️ Line - Routeur audio WASAPI
+  # Line - Routeur audio WASAPI
 
   **Capture et redirige le son de sortie d'un périphérique audio Windows en temps réel.**
 
