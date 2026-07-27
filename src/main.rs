@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::Duration;
@@ -16,7 +16,6 @@ use wasapi::{
 struct DeviceInfo {
     index: u32,
     name: String,
-    is_default: bool,
 }
 
 struct LoopbackApp {
@@ -26,6 +25,10 @@ struct LoopbackApp {
     running: bool,
     status: String,
     stop_flag: Option<Arc<AtomicBool>>,
+    /// Renseigné par le thread audio : sans ça, une erreur de capture terminait le
+    /// thread sur un simple `eprintln!` invisible en mode fenêtré, et l'interface
+    /// continuait d'afficher « Capture en cours… » alors que plus rien ne tournait.
+    thread_error: Arc<Mutex<Option<String>>>,
 }
 
 impl LoopbackApp {
@@ -55,6 +58,7 @@ impl LoopbackApp {
             running: false,
             status,
             stop_flag: None,
+            thread_error: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -68,7 +72,9 @@ impl LoopbackApp {
         let output_index = self.devices[self.selected_output].index;
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stop_flag_thread = Arc::clone(&stop_flag);
+        let error_slot = Arc::clone(&self.thread_error);
 
+        *self.thread_error.lock().unwrap() = None;
         self.stop_flag = Some(stop_flag);
         self.running = true;
         self.status = "Capture en cours…".to_string();
@@ -76,13 +82,28 @@ impl LoopbackApp {
         thread::spawn(move || {
             if let Err(e) = audio_loop(capture_index, output_index, stop_flag_thread) {
                 eprintln!("Erreur dans le thread audio: {e:?}");
+                *error_slot.lock().unwrap() = Some(format!("{e}"));
             }
         });
+    }
+
+    /// Remonte dans l'UI une panne survenue côté thread audio.
+    fn poll_thread_error(&mut self) {
+        if !self.running {
+            return;
+        }
+        if let Some(message) = self.thread_error.lock().unwrap().take() {
+            self.running = false;
+            self.stop_flag = None;
+            self.status = format!("Capture interrompue : {message}");
+        }
     }
 }
 
 impl eframe::App for LoopbackApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_thread_error();
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Routeur audio (loopback WASAPI)");
             ui.label("Choisissez le périphérique de lecture à capturer et vers quel périphérique l'envoyer.");
@@ -163,7 +184,11 @@ fn enumerate_devices() -> Result<(Vec<DeviceInfo>, usize, usize)> {
         let id = dev.get_id()?;
         let is_default = id == default_output_id;
         if is_default {
+            // Le périphérique par défaut est le choix pertinent des deux côtés : c'est
+            // lui qu'on veut capturer en loopback. `selected_capture` restait à 0,
+            // c'est-à-dire un périphérique arbitraire.
             selected_output = i as usize;
+            selected_capture = i as usize;
         }
         let label = if is_default {
             format!("{name} (par défaut)")
@@ -173,7 +198,6 @@ fn enumerate_devices() -> Result<(Vec<DeviceInfo>, usize, usize)> {
         devices.push(DeviceInfo {
             index: i,
             name: label,
-            is_default,
         });
     }
 
@@ -242,6 +266,12 @@ fn audio_loop(capture_index: u32, output_index: u32, stop_flag: Arc<AtomicBool>)
     let bytes_per_frame =
         (mix_format.get_nchannels() as usize) * (mix_format.get_bitspersample() as usize / 8);
 
+    // Plafond du tampon. Sans limite, dès que la sortie est plus lente que la capture
+    // le VecDeque grossit sans fin : la mémoire monte et la latence dérive sans jamais
+    // se résorber. Au-delà de ~2 s d'audio on jette le plus ancien — un décrochage
+    // ponctuel est préférable à une dérive permanente.
+    let max_buffered_bytes = bytes_per_frame * mix_format.get_samplespersec() as usize * 2;
+
     while !stop_flag.load(Ordering::SeqCst) {
         // Attendre qu’il y ait des données à CAPTURER
         capture_event.wait_for_event(200)?; // timeout 200 ms
@@ -257,6 +287,11 @@ fn audio_loop(capture_index: u32, output_index: u32, stop_flag: Arc<AtomicBool>)
             let (frames_read, _info) = audio_capture.read_from_device(&mut temp)?;
             let bytes_read = frames_read as usize * bytes_per_frame;
             buffer.extend(&temp[..bytes_read]);
+
+            if buffer.len() > max_buffered_bytes {
+                let excess = buffer.len() - max_buffered_bytes;
+                buffer.drain(..excess);
+            }
         }
 
         // Attendre un créneau côté rendu

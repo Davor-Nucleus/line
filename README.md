@@ -13,6 +13,15 @@
 
 Application Rust avec interface graphique permettant de capturer le son de sortie d'un périphérique audio Windows et de le rediriger vers un autre périphérique de sortie en temps réel.
 
+## 🎯 Fonctionnalités
+
+- **Capture loopback** : Capture le son de sortie d'un périphérique audio Windows (mode loopback WASAPI).
+- **Redirection audio** : Transfère le flux audio capturé vers un autre périphérique de sortie.
+- **Interface graphique** : Interface utilisateur intuitive avec `egui` pour sélectionner les périphériques.
+- **Temps réel** : Latence faible (~20-40 ms) grâce au mode événementiel WASAPI.
+- **Multi-périphériques** : Support de tous les périphériques audio Windows disponibles.
+- **Conversion automatique** : Adapte le format audio entre la source et la destination si nécessaire.
+
 ## 📋 Sommaire
 
 - [Fonctionnalités](#-fonctionnalités)
@@ -22,16 +31,6 @@ Application Rust avec interface graphique permettant de capturer le son de sorti
 - [Architecture Technique](#-architecture-technique)
 - [Limitations](#-limitations)
 - [Dépannage](#-dépannage)
-
----
-
-## 🎯 Fonctionnalités
-
-- **Capture loopback** : Capture le son de sortie d'un périphérique audio Windows (mode loopback WASAPI).
-- **Redirection audio** : Transfère le flux audio capturé vers un autre périphérique de sortie.
-- **Interface graphique** : Interface utilisateur intuitive avec `egui` pour sélectionner les périphériques.
-- **Temps réel** : Latence faible (~20-40 ms) grâce au mode événementiel WASAPI.
-- **Multi-périphériques** : Support de tous les périphériques audio Windows disponibles.
 
 ---
 
