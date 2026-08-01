@@ -10,7 +10,7 @@ use anyhow::{anyhow, Result};
 use eframe::egui;
 use wasapi::{
     initialize_mta, AudioCaptureClient, AudioRenderClient, DeviceCollection, DeviceEnumerator,
-    Direction, StreamMode, WaveFormat,
+    Direction, StreamMode, WasapiError, WaveFormat,
 };
 
 struct DeviceInfo {
@@ -272,9 +272,24 @@ fn audio_loop(capture_index: u32, output_index: u32, stop_flag: Arc<AtomicBool>)
     // ponctuel est préférable à une dérive permanente.
     let max_buffered_bytes = bytes_per_frame * mix_format.get_samplespersec() as usize * 2;
 
+    // `wait_for_event` renvoie `Err(EventTimeout)` dès que le délai expire — ce n'est
+    // pas une panne. Un périphérique loopback silencieux ne signale rien tant que rien
+    // ne joue : avec un `?`, le simple blanc entre deux morceaux terminait le thread
+    // audio et l'interface affichait « Capture interrompue ». On retente au tour
+    // suivant, ce qui laisse aussi `stop_flag` être relu toutes les 200 ms.
+    macro_rules! wait_or_retry {
+        ($event:expr) => {
+            match $event.wait_for_event(200) {
+                Ok(()) => {}
+                Err(WasapiError::EventTimeout) => continue,
+                Err(e) => return Err(e.into()),
+            }
+        };
+    }
+
     while !stop_flag.load(Ordering::SeqCst) {
         // Attendre qu’il y ait des données à CAPTURER
-        capture_event.wait_for_event(200)?; // timeout 200 ms
+        wait_or_retry!(capture_event); // timeout 200 ms
 
         // Lire tout ce qui est dispo côté capture
         while let Some(frames_in_packet) = audio_capture.get_next_packet_size()? {
@@ -295,7 +310,7 @@ fn audio_loop(capture_index: u32, output_index: u32, stop_flag: Arc<AtomicBool>)
         }
 
         // Attendre un créneau côté rendu
-        render_event.wait_for_event(200)?;
+        wait_or_retry!(render_event);
 
         // Voir combien de frames libres il y a côté sortie
         let free_frames = render_client.get_available_space_in_frames()? as usize;
